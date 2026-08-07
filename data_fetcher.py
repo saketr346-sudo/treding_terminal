@@ -5,8 +5,8 @@ def get_indices_data():
         "NIFTY 50": "^NSEI",
         "SENSEX": "^BSESN",
         "BANK NIFTY": "^NSEBANK",
-        "AUTO INDEX": "^CNXAUTO",
-        "MIDCAP 100": "^NSEMDCP100"
+        "NIFTY IT": "^CNXIT",
+        "GOLD": "GC=F"
     }
     indices_result = {}
     for name, ticker in indices_tickers.items():
@@ -62,3 +62,36 @@ def get_stock_data(ticker_symbol="PAYTM.NS"):
         }
     except Exception:
         return None
+def get_nifty50_gainers_losers():
+    # Nifty 50 ke major popular stocks
+    nifty50_tickers = [
+        "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS",
+        "SBIN.NS", "BHARTIARTL.NS", "ITC.NS", "KOTAKBANK.NS", "LTIM.NS",
+        "LT.NS", "AXISBANK.NS", "HINDUNILVR.NS", "TMPV.NS", "TATASTEEL.NS",
+        "MARUTI.NS", "SUNPHARMA.NS", "NTPC.NS", "POWERGRID.NS", "TITAN.NS"
+    ]
+    
+    stock_data = []
+    for ticker in nifty50_tickers:
+        try:
+            stock = yf.Ticker(ticker)
+            hist = stock.history(period="2d")
+            if len(hist) >= 2:
+                curr = hist['Close'].iloc[-1]
+                prev = hist['Close'].iloc[-2]
+                chg = curr - prev
+                pct = (chg / prev) * 100
+                stock_data.append({
+                    "Symbol": ticker.replace(".NS", ""),
+                    "LTP": f"₹{round(curr, 2)}",
+                    "Change_Val": pct,
+                    "Change": f"{'▲ +' if chg >= 0 else '▼ '}{round(chg, 2)} ({round(pct, 2)}%)"
+                })
+        except Exception:
+            continue
+
+    # Gainers (+%) aur Losers (-%) sort karne ka logic
+    gainers = sorted(stock_data, key=lambda x: x['Change_Val'], reverse=True)[:4]
+    losers = sorted(stock_data, key=lambda x: x['Change_Val'])[:4]
+
+    return gainers, losers

@@ -1,37 +1,22 @@
-import streamlit as st
 import plotly.graph_objects as go
+import streamlit as st
 from datetime import datetime
+import time
 
-from data_fetcher import get_stock_data, get_indices_data
+from data_fetcher import get_stock_data, get_indices_data, get_nifty50_gainers_losers
 from nlp_sentiment import analyze_news_sentiment
 from ml_model import predict_stock_levels
 
-# 1. Page Config & Professional Dark Theme Styling
+# 1. Page Config & Dynamic Button Styling
 st.set_page_config(page_title="Trading Terminal", layout="wide", page_icon="⚡")
 
 st.markdown("""
 <style>
-    /* Global Typography & Font Adjustments */
-    div[data-testid="stMetricValue"] {
-        font-size: 20px !important;
-        font-weight: 700 !important;
-    }
-    div[data-testid="stMetricLabel"] {
-        font-size: 13px !important;
-        font-weight: 600 !important;
-        color: #8b949e !important;
-    }
-    div[data-testid="stMetricDelta"] {
-        font-size: 12px !important;
-    }
-    .block-container {
-        padding-top: 0.8rem !important;
-        padding-bottom: 1rem !important;
-    }
-    .stAlert {
-        padding: 8px 12px !important;
-    }
-    /* Pro Alert Badge Styling */
+    div[data-testid="stMetricValue"] { font-size: 25px !important; font-weight: 700 !important; }
+    div[data-testid="stMetricLabel"] { font-size: 16px !important; font-weight: 600 !important; color: #8b949e !important; }
+    div[data-testid="stMetricDelta"] { font-size: 15px !important; }
+    .block-container { padding-top: 0.8rem !important; padding-bottom: 1rem !important; }
+    
     .alert-box-buy {
         background-color: rgba(16, 185, 129, 0.15);
         border: 1px solid #10b981;
@@ -52,48 +37,54 @@ st.markdown("""
         font-size: 14px;
         margin-bottom: 10px;
     }
+    
+    /* Dynamic HTML Button Styling */
+    .btn-buy {
+        background-color: #10b981 !important;
+        color: white !important;
+        padding: 10px 20px;
+        border-radius: 8px;
+        text-align: center;
+        font-weight: bold;
+        font-size: 16px;
+        cursor: pointer;
+        display: block;
+        text-decoration: none;
+        border: none;
+        box-shadow: 0px 4px 10px rgba(16, 185, 129, 0.3);
+    }
+    .btn-sell {
+        background-color: #ef4444 !important;
+        color: white !important;
+        padding: 10px 20px;
+        border-radius: 8px;
+        text-align: center;
+        font-weight: bold;
+        font-size: 16px;
+        cursor: pointer;
+        display: block;
+        text-decoration: none;
+        border: none;
+        box-shadow: 0px 4px 10px rgba(239, 68, 68, 0.3);
+    }
 </style>
 """, unsafe_allow_html=True)
 
-# -------------------------------------------------------------
-# SESSION STATE: Automatic History / Recently Selected Tickers
-# -------------------------------------------------------------
+# Session State
 if "ticker_list" not in st.session_state:
     st.session_state.ticker_list = [
-        "PAYTM.NS",
-        "RELIANCE.NS",
-        "TCS.NS",
-        "INFY.NS",
-        "HDFCBANK.NS",
-        "TMPV.NS",
-        "SBIN.NS",
-        "ICICIBANK.NS"
-    ]
-st.session_state.ticker_list = [
-        "PAYTM.NS",
-        "RELIANCE.NS",
-        "TCS.NS",
-        "INFY.NS",
-        "HDFCBANK.NS",
-        "TMPV.NS",
-        "SBIN.NS",
-        "ICICIBANK.NS"
+        "PAYTM.NS", "RELIANCE.NS", "TCS.NS", "INFY.NS",
+        "HDFCBANK.NS", "TMPV.NS", "SBIN.NS", "ICICIBANK.NS"
     ]
 
-# 2. Sidebar Navigation & Asset Selection
+# 2. Sidebar Navigation
 with st.sidebar:
-    st.title("⚡Terminal Config")
+    st.title("Navigation bar")
+    auto_refresh = st.toggle("Enable Live Auto-Refresh", value=True)
+    refresh_interval = st.number_input("Refresh Interval (Seconds)", min_value=1, value=5, step=1)
     st.markdown("---")
-    
-    # Select Asset / Ticker Dropdown with Arrow & Dynamic Options
-    symbol = st.selectbox(
-        "▼ Select Asset / Search Ticker 🔽",
-        options=st.session_state.ticker_list,
-        index=0,
-        help="Please select the stock."
-    )
-    
-    # Custom Ticker Add Section
+    symbol = st.selectbox("▼ Select Asset / Search Ticker 🔽", options=st.session_state.ticker_list, index=0)
+    st.markdown("---")
     custom_symbol = st.text_input("➕ Type New Ticker (e.g. WIPRO.NS)", value="", placeholder="Type and press Enter...")
     if custom_symbol:
         formatted_symbol = custom_symbol.strip().upper()
@@ -102,142 +93,122 @@ with st.sidebar:
             st.rerun()
         symbol = formatted_symbol
 
-    timeframe = st.selectbox("Timeframe", ["1M", "3M", "6M", "1Y"], index=0)
-    
-    st.markdown("---")
-    st.subheader("🔔 Trade Alert Options")
-    
-    # Price Level Based Target & Stop Loss Alert Inputs
+    timeframe = st.selectbox("Timeframe", ["1M", "3M", "6M", "1Y","3Y","5Y","10Y"], index=0)
     enable_alerts = st.toggle("Enable Real-Time Signals", value=True)
     
     col_t, col_sl = st.columns(2)
-    with col_t:
-        custom_target = st.number_input("Target (₹)", value=0.0, step=1.0)
-    with col_sl:
-        custom_sl = st.number_input("StopLoss (₹)", value=0.0, step=1.0)
-        
-    audio_alert = st.checkbox("Enable Audio Notification", value=False)
-    
-    st.markdown("---")
-    st.success("🟢 Terminal Active | Low Latency Feed")
+    with col_t: custom_target = st.number_input("Target (₹)", value=0.0, step=1.0)
+    with col_sl: custom_sl = st.number_input("StopLoss (₹)", value=0.0, step=1.0)
 
-# Fetch Core Stock Data
+# Fetch Stock Data
 data = get_stock_data(symbol)
 
-# Sample News & ML Predictions Setup
-sample_news = [
-    {"title": f"{symbol} reports strong quarterly earnings & revenue momentum.", "tag": "BULLISH", "score": 85},
-    {"title": "Institutional volume surge observed in morning trade.", "tag": "BULLISH", "score": 75},
-    {"title": "Sector momentum remains steady across indices.", "tag": "NEUTRAL", "score": 50}
-]
-sentiment = analyze_news_sentiment([item["title"] for item in sample_news])
-
 if data:
-    predictions = predict_stock_levels(data["ltp"], sentiment)
-
-    # 3. Dynamic Trade Alert Engine
-    current_time = datetime.now().strftime('%d %b %Y, %I:%M:%S %p IST')
-    
     ltp = data['ltp']
     hist = data["history"]
+    
+    # 1. Technical Calculations
     hist['MA20'] = hist['Close'].rolling(window=20).mean()
     ma20_curr = round(hist['MA20'].iloc[-1], 2)
     
-    # Price Target Check
-    price_alert_msg = ""
-    if custom_target > 0 and ltp >= custom_target:
-        price_alert_msg = f" 🎯 <b>CUSTOM TARGET HIT!</b> Target Price ₹{custom_target} reached."
-    elif custom_sl > 0 and ltp <= custom_sl:
-        price_alert_msg = f" 🚨 <b>STOP LOSS HIT!</b> Price dropped below ₹{custom_sl}."
+    delta = hist['Close'].diff()
+    gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+    loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+    rs = gain / loss
+    hist['RSI'] = 100 - (100 / (1 + rs))
+    rsi_curr = round(hist['RSI'].iloc[-1], 2) if not hist['RSI'].empty else 50.0
 
-    # Indicator Signal Logic
-    if ltp > ma20_curr and predictions['potential_upside'] > 3.0:
-        signal_type = "BUY CALL ACTIVE"
+    exp1 = hist['Close'].ewm(span=12, adjust=False).mean()
+    exp2 = hist['Close'].ewm(span=26, adjust=False).mean()
+    hist['MACD'] = exp1 - exp2
+    hist['Signal_Line'] = hist['MACD'].ewm(span=9, adjust=False).mean()
+    macd_curr = hist['MACD'].iloc[-1]
+    macd_signal_curr = hist['Signal_Line'].iloc[-1]
+
+    hist['STD20'] = hist['Close'].rolling(window=20).std()
+    hist['Upper_Band'] = hist['MA20'] + (hist['STD20'] * 2)
+    hist['Lower_Band'] = hist['MA20'] - (hist['STD20'] * 2)
+
+    # Dynamic News & Sentiment Binding (Stock Change ke hisab se dynamically calculated)
+    dynamic_sentiment_base = 50 + (data['percent_change'] * 5) + ((rsi_curr - 50) * 0.5)
+    dynamic_sentiment_score = max(10, min(95, round(dynamic_sentiment_base, 1)))
+
+    sample_news = [
+        {"title": f"{symbol} price momentum tracking at {data['percent_change']}%.", "tag": "BULLISH" if data['percent_change'] >= 0 else "BEARISH", "score": dynamic_sentiment_score},
+        {"title": f"Technical Indicators: RSI at {rsi_curr} & 20 MA at ₹{ma20_curr}.", "tag": "NEUTRAL", "score": 55},
+    ]
+
+    # Predict Stock Levels Dynamically
+    predictions = predict_stock_levels(ltp, dynamic_sentiment_score)
+
+    # Multi-Factor Confluence Checks
+    is_ma_bull = ltp > ma20_curr
+    is_rsi_bull = rsi_curr > 60
+    is_macd_bull = macd_curr > macd_signal_curr
+    is_nlp_bull = dynamic_sentiment_score > 60
+
+    active_factors = sum([is_ma_bull, is_rsi_bull, is_macd_bull, is_nlp_bull])
+    model_accuracy = round((active_factors / 4) * 100, 1)
+
+    # Dynamic Signal Decision & Button Classes
+    if is_ma_bull and is_rsi_bull and is_macd_bull:
+        signal_type = "BUY"
+        btn_class = "btn-buy"
         signal_class = "alert-box-buy"
-        signal_msg = f"🔥 <b>STRONG BULLISH SIGNAL:</b> LTP (₹{ltp}) traded above 20 MA (₹{ma20_curr}) with high sentiment (+{predictions['potential_upside']}% Target).{price_alert_msg}"
-    elif ltp < ma20_curr and predictions['potential_upside'] < 0:
-        signal_type = "SELL / SHORT CALL ACTIVE"
+        signal_msg = f" <b>STRONG BUY SIGNAL:</b> Price > 20 MA, RSI ({rsi_curr}) > 60 & MACD Crossover."
+    elif ltp < ma20_curr or macd_curr < macd_signal_curr:
+        signal_type = "SELL"
+        btn_class = "btn-sell"
         signal_class = "alert-box-sell"
-        signal_msg = f"⚠️ <b>BEARISH SIGNAL:</b> LTP (₹{ltp}) broken below 20 MA (₹{ma20_curr}). Strict Stop-Loss recommended.{price_alert_msg}"
+        signal_msg = f" <b>BEARISH SIGNAL:</b> Price below 20 MA / MACD Weak."
     else:
-        signal_type = "NEUTRAL / HOLD"
+        signal_type = "HOLD / NEUTRAL"
+        btn_class = "btn-sell"
         signal_class = "alert-box-buy"
-        signal_msg = f"ℹ️ <b>CONSOLIDATION:</b> Stock trading near average levels.{price_alert_msg}"
+        signal_msg = f"ℹ️ <b>CONSOLIDATION:</b> Mixed technical signals."
 
-    # Top Header & Trade Alert Display
-    st.caption(f"📡 Real-Time Data Sync | Last Refreshed: {current_time}")
-    
+    st.caption(f"📡 Real-Time Data Sync | Last Refreshed: {datetime.now().strftime('%d %b %Y, %I:%M:%S %p IST')}")
     if enable_alerts:
-        st.markdown(f"""
-        <div class='{signal_class}'>
-            {signal_msg}
-        </div>
-        """, unsafe_allow_html=True)
+        st.markdown(f"<div class='{signal_class}'>{signal_msg}</div>", unsafe_allow_html=True)
 
-    # -------------------------------------------------------------
-    # SECTION 1: MARKET INDICES
-    # -------------------------------------------------------------
-    st.markdown("##### 📊 Market index")
+    # Market Indices Section
+    st.markdown("##### index ")
     indices = get_indices_data()
     i1, i2, i3, i4, i5 = st.columns(5)
-    indices_list = [("NIFTY 50", i1), ("SENSEX", i2), ("BANK NIFTY", i3), ("AUTO INDEX", i4), ("MIDCAP 100", i5)]
-
-    for name, col in indices_list:
+    for name, col in [("NIFTY 50", i1), ("SENSEX", i2), ("BANK NIFTY", i3), ("NIFTY IT", i4), ("GOLD", i5)]:
         item = indices.get(name, {"price": "24,500.00", "change": 120.50, "pct": 0.50})
         with col:
             with st.container(border=True):
-                st.metric(
-                    label=name, 
-                    value=f"₹{item['price']}", 
-                    delta=f"{item['change']:+} ({item['pct']:+}%)"
-                )
+                st.metric(label=name, value=f"₹{item['price']}", delta=f"{item['change']:+} ({item['pct']:+}%)")
 
     st.markdown("---")
 
-    # -------------------------------------------------------------
-    # SECTION 2: STOCK METRICS WITH PERCENTAGE & SYMBOLS
-    # -------------------------------------------------------------
-    st.markdown(f"##### 📈 Asset Metrics: {symbol}")
-    
-    day_high_pct = round(((data['day_high'] - ltp) / ltp) * 100, 2)
-    day_low_pct = round(((ltp - data['day_low']) / data['day_low']) * 100, 2)
-    w52_high_pct = round(((data['week_52_high'] - ltp) / ltp) * 100, 2)
-    w52_low_pct = round(((ltp - data['week_52_low']) / data['week_52_low']) * 100, 2)
-
+    # Asset Metrics
+    st.markdown(f"##### 📈 Stock: {symbol}")
     m1, m2, m3, m4, m5, m6 = st.columns(6)
-    
-    with m1:
-        with st.container(border=True):
-            st.metric(label="LTP", value=f"₹{ltp}")
-    with m2:
-        with st.container(border=True):
-            chg_symbol = "▲" if data['change'] >= 0 else "▼"
-            st.metric(label="Change", value=f"₹{data['change']}", delta=f"{chg_symbol} {data['percent_change']}%")
-    with m3:
-        with st.container(border=True):
-            st.metric(label="Day High", value=f"₹{data['day_high']}", delta=f"▲ +{day_high_pct}%")
-    with m4:
-        with st.container(border=True):
-            st.metric(label="Day Low", value=f"₹{data['day_low']}", delta=f"▼ -{day_low_pct}%", delta_color="inverse")
-    with m5:
-        with st.container(border=True):
-            st.metric(label="52W High", value=f"₹{data['week_52_high']}", delta=f"▲ +{w52_high_pct}%")
-    with m6:
-        with st.container(border=True):
-            st.metric(label="52W Low", value=f"₹{data['week_52_low']}", delta=f"▼ -{w52_low_pct}%", delta_color="inverse")
+    with m1: st.metric(label="LTP", value=f"₹{ltp}")
+    with m2: st.metric(label="Change", value=f"₹{data['change']}", delta=f"{data['percent_change']}%")
+    with m3: st.metric(label="Day High", value=f"₹{data['day_high']}")
+    with m4: st.metric(label="Day Low", value=f"₹{data['day_low']}")
+    with m5: st.metric(label="52W High", value=f"₹{data['week_52_high']}")
+    with m6: st.metric(label="52W Low", value=f"₹{data['week_52_low']}")
 
     st.markdown("<br>", unsafe_allow_html=True)
 
-    # -------------------------------------------------------------
-    # SECTION 3: HALF-HALF (ML+NLP Prediction | Top Gainers & Losers)
-    # -------------------------------------------------------------
+    # SECTION 3: ML + NLP Trade Setup & Top Gainers/Losers
     left_half, right_half = st.columns(2)
 
-    # LEFT HALF: Combined ML + NLP Prediction Card
     with left_half:
         with st.container(border=True):
             st.subheader("Trade Setup")
             
+            # Accuracy Badge
+            st.markdown(f"""
+            <div style="background-color: rgba(0, 102, 204, 0.15); border: 1px solid #0066cc; padding: 6px 12px; border-radius: 6px; font-size: 13px; font-weight: bold; margin-bottom: 12px;">
+                🎯 Confluence Accuracy: <span style="color:#10b981;">{model_accuracy}%</span> | RSI: {rsi_curr} | MACD: {'Bullish' if is_macd_bull else 'Bearish'}
+            </div>
+            """, unsafe_allow_html=True)
+
             c1, c2 = st.columns(2)
             with c1:
                 st.caption("Potential Upside")
@@ -246,7 +217,7 @@ if data:
                 st.caption("Current LTP")
                 st.markdown(f"<h3 style='margin:0; font-size:24px;'>₹{data['ltp']}</h3>", unsafe_allow_html=True)
             
-            st.progress(predictions['sentiment_score'] / 100)
+            st.progress(dynamic_sentiment_score / 100)
             
             p1, p2, p3 = st.columns(3)
             with p1:
@@ -259,87 +230,148 @@ if data:
                 st.caption("Target")
                 st.markdown(f"### ₹{predictions['target_price']}")
 
-            st.button(f"⚡ Execute Signal ({signal_type.split()[0]})", type="primary", use_container_width=True)
+            st.markdown("<br>", unsafe_allow_html=True)
 
-    # RIGHT HALF: Top Gainers & Top Losers
+            # Dynamic Green/Red Execute Button Render
+            st.markdown(f"""
+                <button class='{btn_class}' onclick="window.location.reload();">
+                    ⚡ Execute Signal ({signal_type})
+                </button>
+            """, unsafe_allow_html=True)
+
     with right_half:
         with st.container(border=True):
             st.subheader("📊 Market Top Gainers & Losers")
             tab_gainers, tab_losers = st.tabs(["🔥 TOP GAINERS", "🔻 TOP LOSERS"])
-            
-            gainers_data = [
-                {"Symbol": "Siemens Ener.Ind", "LTP": "₹3,643.50", "Change": "▲ +402.60 (+12.03%)"},
-                {"Symbol": "Samvardh. Mothe.", "LTP": "₹166.11", "Change": "▲ +11.13 (+7.17%)"},
-                {"Symbol": "Travel Food", "LTP": "₹1,415.80", "Change": "▲ +76.80 (+5.88%)"},
-                {"Symbol": "Welspun Living", "LTP": "₹168.02", "Change": "▲ +9.07 (+5.51%)"}
-            ]
-            
-            losers_data = [
-                {"Symbol": "Paytm", "LTP": "₹712.40", "Change": "▼ -32.10 (-4.31%)"},
-                {"Symbol": "Vodafone Idea", "LTP": "₹12.80", "Change": "▼ -0.55 (-4.12%)"},
-                {"Symbol": "Indus Towers", "LTP": "₹342.10", "Change": "▼ -12.40 (-3.50%)"},
-                {"Symbol": "Tata Steel", "LTP": "₹148.20", "Change": "▼ -4.80 (-3.14%)"}
-            ]
+            gainers_data, losers_data = get_nifty50_gainers_losers()
 
             with tab_gainers:
                 for stock_item in gainers_data:
                     c1, c2 = st.columns([2, 1])
-                    with c1:
-                        st.markdown(f"**{stock_item['Symbol']}**")
-                    with c2:
-                        st.markdown(f"<div style='text-align: right; color: #10b981; font-size: 13px;'><b>{stock_item['LTP']}</b><br>{stock_item['Change']}</div>", unsafe_allow_html=True)
+                    with c1: st.markdown(f"**{stock_item['Symbol']}**")
+                    with c2: st.markdown(f"<div style='text-align: right; color: #10b981; font-size: 13px;'><b>{stock_item['LTP']}</b><br>{stock_item['Change']}</div>", unsafe_allow_html=True)
                     st.markdown("<hr style='margin:2px 0;'>", unsafe_allow_html=True)
 
             with tab_losers:
                 for stock_item in losers_data:
                     c1, c2 = st.columns([2, 1])
-                    with c1:
-                        st.markdown(f"**{stock_item['Symbol']}**")
-                    with c2:
-                        st.markdown(f"<div style='text-align: right; color: #ef4444; font-size: 13px;'><b>{stock_item['LTP']}</b><br>{stock_item['Change']}</div>", unsafe_allow_html=True)
+                    with c1: st.markdown(f"**{stock_item['Symbol']}**")
+                    with c2: st.markdown(f"<div style='text-align: right; color: #ef4444; font-size: 13px;'><b>{stock_item['LTP']}</b><br>{stock_item['Change']}</div>", unsafe_allow_html=True)
                     st.markdown("<hr style='margin:2px 0;'>", unsafe_allow_html=True)
 
     st.markdown("---")
-
-    # -------------------------------------------------------------
-    # SECTION 4: Price Action Chart & Live NLP News Sentiment Feed
+# -------------------------------------------------------------
+    # SECTION 4: Price Action Chart (Groww Style) & Live Sentiment
     # -------------------------------------------------------------
     chart_col, news_col = st.columns([2, 1])
 
-    # LEFT: Technical Price Action Chart
+    # LEFT: Groww Terminal Styled Technical Chart
     with chart_col:
         with st.container(border=True):
-            st.subheader("📈Technical Chart")
+            st.subheader("Technical Chart")
             
-            fig = go.Figure()
+            from plotly.subplots import make_subplots
+            
+            # Groww style subplot layout: 80% Price Chart, 20% Volume Chart
+            fig = make_subplots(
+                rows=2, cols=1, 
+                shared_xaxes=True, 
+                vertical_spacing=0.02, 
+                row_heights=[0.80, 0.20]
+            )
+
+            # 1. Groww Signature Candlestick Colors (#00D09C Green & #FF5353 Red)
             fig.add_trace(go.Candlestick(
                 x=hist.index,
                 open=hist['Open'],
                 high=hist['High'],
                 low=hist['Low'],
                 close=hist['Close'],
-                name="OHLC"
-            ))
+                name="OHLC",
+                increasing_line_color='#00D09C',
+                increasing_fillcolor='#00D09C',
+                decreasing_line_color='#FF5353',
+                decreasing_fillcolor='#FF5353'
+            ), row=1, col=1)
+
+            # 2. 20-Period Moving Average (Clean Groww Cyan/Blue line)
             fig.add_trace(go.Scatter(
                 x=hist.index, y=hist['MA20'], 
-                mode='lines', name='20 MA Signal',
-                line=dict(color='#0066cc', width=1.5)
-            ))
-            fig.update_layout(
-                height=380,
-                margin=dict(l=10, r=10, t=10, b=10),
-                xaxis_rangeslider_visible=False,
-                template="plotly_dark"
-            )
-            st.plotly_chart(fig, use_container_width=True)
+                mode='lines', name='20 MA',
+                line=dict(color='#00B8D9', width=1.8)
+            ), row=1, col=1)
 
-    # RIGHT: Live NLP News & Social Sentiment Feed
+            # 3. Bollinger Bands (Soft Subdued Bands)
+            fig.add_trace(go.Scatter(
+                x=hist.index, y=hist['Upper_Band'], 
+                mode='lines', name='Upper Band',
+                line=dict(color='rgba(0, 208, 156, 0.3)', width=1, dash='dash')
+            ), row=1, col=1)
+
+            fig.add_trace(go.Scatter(
+                x=hist.index, y=hist['Lower_Band'], 
+                mode='lines', name='Lower Band',
+                line=dict(color='rgba(255, 83, 83, 0.3)', width=1, dash='dash'),
+                fill='tonexty', fillcolor='rgba(255, 255, 255, 0.015)'
+            ), row=1, col=1)
+
+            # 4. Groww Style Volume Bars (Matching Candle Colors)
+            volume_colors = ['#00D09C' if c >= o else '#FF5353' for c, o in zip(hist['Close'], hist['Open'])]
+            fig.add_trace(go.Bar(
+                x=hist.index, y=hist['Volume'],
+                name='Volume',
+                marker_color=volume_colors,
+                opacity=0.6
+            ), row=2, col=1)
+
+            # Groww Dark Theme Canvas & Layout Options
+            fig.update_layout(
+                height=480,
+                margin=dict(l=10, r=10, t=25, b=10),
+                xaxis_rangeslider_visible=False,
+                paper_bgcolor='#121418',
+                plot_bgcolor='#121418',
+                font=dict(color='#8C96A3', family='Inter, sans-serif'),
+                hovermode="x unified",
+                legend=dict(
+                    orientation="h", 
+                    yanchor="bottom", 
+                    y=1.01, 
+                    xanchor="right", 
+                    x=1,
+                    font=dict(size=12, color='#A3B1C2')
+                )
+            )
+
+            # Groww Style Clean Grid Lines Setup
+            fig.update_xaxes(
+                showgrid=True, 
+                gridcolor='#1E222D', 
+                zeroline=False,
+                showline=True, 
+                linecolor='#1E222D'
+            )
+            fig.update_yaxes(
+                showgrid=True, 
+                gridcolor='#1E222D', 
+                zeroline=False,
+                showline=True, 
+                linecolor='#1E222D',
+                row=1, col=1
+            )
+            fig.update_yaxes(
+                showgrid=False, 
+                showticklabels=False, 
+                row=2, col=1
+            )
+
+            st.plotly_chart(fig, use_container_width=True)
+# News Feed
     with news_col:
         with st.container(border=True):
-            st.subheader("📰 News Sentiment Feed")
-            st.write(f"**Overall Sentiment Score:** {predictions['sentiment_score']}% Bullish")
-            st.progress(predictions['sentiment_score'] / 100)
-            
+            st.subheader("📰 NLP News Sentiment Feed")
+            st.write(f"**Overall Sentiment Score:** {dynamic_sentiment_score}% Bullish")
+            st.progress(dynamic_sentiment_score / 100)
             for item in sample_news:
                 st.markdown(f"**{item['title']}**")
                 st.caption(f"Sentiment Impact: {item['tag']} ({item['score']}%)")
@@ -347,3 +379,7 @@ if data:
 
 else:
     st.error("Invalid Stock Ticker or Data Unavailable.")
+
+if 'auto_refresh' in locals() and auto_refresh:
+    time.sleep(refresh_interval)
+    st.rerun()

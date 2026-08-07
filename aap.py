@@ -7,7 +7,7 @@ from nlp_sentiment import analyze_news_sentiment
 from ml_model import predict_stock_levels
 
 # 1. Page Config & Professional Dark Theme Styling
-st.set_page_config(page_title="Institutional Trading Terminal", layout="wide", page_icon="⚡")
+st.set_page_config(page_title="Trading Terminal", layout="wide", page_icon="⚡")
 
 st.markdown("""
 <style>
@@ -82,7 +82,7 @@ st.session_state.ticker_list = [
 
 # 2. Sidebar Navigation & Asset Selection
 with st.sidebar:
-    st.title("⚡ Pro Terminal Config")
+    st.title("⚡Terminal Config")
     st.markdown("---")
     
     # Select Asset / Ticker Dropdown with Arrow & Dynamic Options
@@ -90,7 +90,7 @@ with st.sidebar:
         "▼ Select Asset / Search Ticker 🔽",
         options=st.session_state.ticker_list,
         index=0,
-        help="Aap list se choose kar sakte hain ya custom ticker type kar sakte hain."
+        help="Please select the stock."
     )
     
     # Custom Ticker Add Section
@@ -177,7 +177,7 @@ if data:
     # -------------------------------------------------------------
     # SECTION 1: MARKET INDICES
     # -------------------------------------------------------------
-    st.markdown("##### 📊 Market Indices Summary")
+    st.markdown("##### 📊 Market index")
     indices = get_indices_data()
     i1, i2, i3, i4, i5 = st.columns(5)
     indices_list = [("NIFTY 50", i1), ("SENSEX", i2), ("BANK NIFTY", i3), ("AUTO INDEX", i4), ("MIDCAP 100", i5)]
@@ -236,7 +236,7 @@ if data:
     # LEFT HALF: Combined ML + NLP Prediction Card
     with left_half:
         with st.container(border=True):
-            st.subheader("🧠 ML + NLP Predictive Trade Setup")
+            st.subheader("Trade Setup")
             
             c1, c2 = st.columns(2)
             with c1:
@@ -309,7 +309,7 @@ if data:
     # LEFT: Technical Price Action Chart
     with chart_col:
         with st.container(border=True):
-            st.subheader("📈 Institutional Technical Chart")
+            st.subheader("📈Technical Chart")
             
             fig = go.Figure()
             fig.add_trace(go.Candlestick(
@@ -336,7 +336,7 @@ if data:
     # RIGHT: Live NLP News & Social Sentiment Feed
     with news_col:
         with st.container(border=True):
-            st.subheader("📰 NLP News Sentiment Feed")
+            st.subheader("📰 News Sentiment Feed")
             st.write(f"**Overall Sentiment Score:** {predictions['sentiment_score']}% Bullish")
             st.progress(predictions['sentiment_score'] / 100)
             

@@ -1,4 +1,6 @@
-streamlit
-plotly
+ streamlit
 yfinance
+plotly
+pandas
+numpy
 vaderSentiment

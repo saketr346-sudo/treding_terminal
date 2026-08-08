@@ -369,7 +369,7 @@ if data:
 # News Feed
     with news_col:
         with st.container(border=True):
-            st.subheader("📰 NLP News Sentiment Feed")
+            st.subheader("📰News Sentiment Feed")
             st.write(f"**Overall Sentiment Score:** {dynamic_sentiment_score}% Bullish")
             st.progress(dynamic_sentiment_score / 100)
             for item in sample_news:

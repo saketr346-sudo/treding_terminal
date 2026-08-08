@@ -62,8 +62,8 @@ def get_stock_data(ticker_symbol="PAYTM.NS"):
         }
     except Exception:
         return None
+
 def get_nifty50_gainers_losers():
-    # Nifty 50 ke major popular stocks
     nifty50_tickers = [
         "RELIANCE.NS", "TCS.NS", "INFY.NS", "HDFCBANK.NS", "ICICIBANK.NS",
         "SBIN.NS", "BHARTIARTL.NS", "ITC.NS", "KOTAKBANK.NS", "LTIM.NS",
@@ -90,7 +90,6 @@ def get_nifty50_gainers_losers():
         except Exception:
             continue
 
-    # Gainers (+%) aur Losers (-%) sort karne ka logic
     gainers = sorted(stock_data, key=lambda x: x['Change_Val'], reverse=True)[:4]
     losers = sorted(stock_data, key=lambda x: x['Change_Val'])[:4]
 

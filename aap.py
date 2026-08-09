@@ -12,7 +12,7 @@ from data_fetcher import (
 from ml_model import predict_stock_levels
 
 # 1. Page Config & CSS Updates
-st.set_page_config(page_title="Terminal Dashbord", layout="wide", page_icon="⚡")
+st.set_page_config(page_title="Terminal Dashbord", layout="wide", page_icon="")
 
 st.markdown(
     """
